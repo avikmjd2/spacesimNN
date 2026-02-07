@@ -48,7 +48,7 @@ void apply_gravity(Body &a, Body &b, double dt)
     double dx = b.pos.x - a.pos.x;
     double dy = b.pos.y - a.pos.y;
     double distance = sqrt(dx * dx + dy * dy);
-    double force = (G * a.mass * b.mass) / (distance * distance + 0.001);
+    double force = (G * a.mass * b.mass) / (distance * distance + 0.000000001);
     double ax = force * (dx / distance) / a.mass;
     double ay = force * (dy / distance) / a.mass;
 
@@ -83,8 +83,10 @@ void run_training(DenseLayer &nn, int epochs, double lr)
     vector<string> allLines;
     ifstream file("trainingData.csv");
     string line;
-    while (getline(file, line)) {
-        if (!line.empty()) allLines.push_back(line);
+    while (getline(file, line))
+    {
+        if (!line.empty())
+            allLines.push_back(line);
     }
     file.close();
 
@@ -97,13 +99,14 @@ void run_training(DenseLayer &nn, int epochs, double lr)
         std::shuffle(allLines.begin(), allLines.end(), rng);
 
         double totalError = 0;
-        for (const string& rowLine : allLines)
+        for (const string &rowLine : allLines)
         {
             stringstream ss(rowLine);
             string val;
             vector<double> row;
 
-            while (getline(ss, val, ',')) {
+            while (getline(ss, val, ','))
+            {
                 row.push_back(stod(val));
             }
 
@@ -118,7 +121,7 @@ void run_training(DenseLayer &nn, int epochs, double lr)
                 totalError += pow(prediction[0] - target[0], 2) + pow(prediction[1] - target[1], 2);
             }
         }
-        
+
         if (e % 10 == 0)
             cout << "Epoch " << e << " | Average Loss: " << totalError / allLines.size() << endl;
     }
@@ -138,7 +141,7 @@ int main()
     double dt = 3600 * 5;
     // Body sun(0, 0, 0, 0, 1.989e30);
     bodies.emplace_back(0, 0, 0, 0, 1.989e30);          // sun
-    bodies.emplace_back(1.5e11, 0, 0, 29780, 5.972e24); // earth
+    bodies.emplace_back(1.5e11, 0, 0, 0.9*29780, 5.972e24); // earth
     // bodies.emplace_back(0, 1.5e11, -20000, 0, 5.972e25); //another planet
     // bodies.emplace_back(0.5e11, 1e11, -20000, 0, 10.972e25); //another planet
     // Body earth(1.5e11, 0, 0, 29780, 5.972e24);
@@ -146,6 +149,10 @@ int main()
     DenseLayer brain(4, 2);
     Vector2 ghostPos = {1.5e11, 0};
     State currentState = COLLECTING;
+    RenderTexture2D target = LoadRenderTexture(screenwidth, screenheight);
+    BeginTextureMode(target);
+    ClearBackground(BLANK);
+    EndTextureMode();
 
     while (!WindowShouldClose())
     {
@@ -154,11 +161,15 @@ int main()
         double currentRelY = bodies[1].pos.y - bodies[0].pos.y;
         double velX = bodies[1].vel.x;
         double velY = bodies[1].vel.y;
+        int substeps = 5000;
+        double subDt = dt / substeps;
 
-        apply_physics(bodies, dt);
+        for (int i = 0; i < substeps; i++)
+            apply_physics(bodies, subDt);
+
         // earth.update_position(3600 * 2);
-        BeginDrawing();
-        ClearBackground(BLACK);
+        // BeginDrawing();
+        // ClearBackground(BLACK);
         // DrawCircle(screenwidth/2,screenheight/2,10,YELLOW);
 
         // output state
@@ -201,6 +212,25 @@ int main()
             ghostPos.x = (float)(predictedRelX + bodies[0].pos.x);
             ghostPos.y = (float)(predictedRelY + bodies[0].pos.y);
         }
+
+        BeginTextureMode(target);
+        for (size_t i = 0; i < bodies.size(); i++)
+        {
+            int drawX = (int)(bodies[i].pos.x / scale) + screenwidth / 2;
+            int drawY = (int)(bodies[i].pos.y / scale) + screenheight / 2;
+
+            // Draw a tiny pixel or circle that stays there
+            Color pathColor = (i == 0) ? ORANGE : (i == 1) ? DARKBLUE
+                                                           : MAROON;
+            DrawCircle(drawX, drawY, 1, pathColor);
+        }
+        EndTextureMode();
+
+        BeginDrawing();
+        ClearBackground(BLACK);
+
+        DrawTextureRec(target.texture, (Rectangle){ 0, 0, (float)target.texture.width, (float)-target.texture.height }, (Vector2){ 0, 0 }, WHITE);
+
 
         for (size_t i = 0; i < bodies.size(); i++)
         {
