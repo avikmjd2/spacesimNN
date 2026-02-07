@@ -1,8 +1,8 @@
 # Variables
 CC = g++
 CFLAGS = -I./include
-LDFLAGS = -L./lib
-LIBS = -lraylib -lopengl32 -lgdi32 -lwinmm
+LDFLAGS = -L./lib -static
+LIBS = -lraylib -lopengl32 -lgdi32 -lwinmm -static-libgcc
 SRC = simulation.cpp nn.cpp
 OBJ = game.exe
 
