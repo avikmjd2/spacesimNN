@@ -1,9 +1,10 @@
 # Variables
 CC = g++
 CFLAGS = -I./include
-LDFLAGS = -L./lib -static
-LIBS = -lraylib -lopengl32 -lgdi32 -lwinmm -static-libgcc -mwindows -O2
-SRC = simulation.cpp nn.cpp
+LDFLAGS = -L./lib 
+LIBS = -lraylib -lopengl32 -lgdi32 -lwinmm -static-libgcc -O2
+# LIBS = -lraylib -lopengl32 -lgdi32 -lwinmm -static-libgcc -mwindows -O2
+SRC = simulation.cpp nn.cpp Layer.cpp matrix.cpp
 OBJ = game.exe
 
 # The default target

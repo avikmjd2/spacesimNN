@@ -4,6 +4,8 @@
 #include "nn.h"
 #include <algorithm>
 #include <random>
+#include "Layer.h"
+#include "matrix.h"
 
 const double DIST_SCALE = 1.5e11;
 const double VEL_SCALE = 30000.0;
@@ -21,6 +23,97 @@ enum State
     TRAINING,
     PREDICTING
 };
+
+
+class NeuralNetwork {
+public:
+    std::vector<Layer> layers;
+
+    void add_layer(int in_size, int out_size) {
+        layers.emplace_back(in_size, out_size);
+    }
+
+
+    void save_model(string filename) {
+        std::ofstream out(filename, std::ios::binary);
+        if (!out) return;
+
+        int numLayers = layers.size();
+        out.write((char*)&numLayers, sizeof(int));
+
+        for (auto& layer : layers) {
+            layer.weights.save(out);
+            layer.bias.save(out);
+        }
+        out.close();
+        cout << "Model saved to " << filename << endl;
+    }
+
+    void load_model(string filename) {
+        std::ifstream in(filename, std::ios::binary);
+        if (!in) {
+            cout << "No model file found!" << endl;
+            return;
+        }
+
+        int numLayers;
+        in.read((char*)&numLayers, sizeof(int));
+        
+        // Note: This assumes you have already added the layers 
+        // with the correct sizes via add_layer()
+        for (int i = 0; i < numLayers; i++) {
+            layers[i].weights.load(in);
+            layers[i].bias.load(in);
+        }
+        in.close();
+        cout << "Model loaded from " << filename << endl;
+    }
+
+    // Overload forward to handle std::vector for convenience
+    vector<double> forward(vector<double> vec_input) {
+        Mat input(1, vec_input.size());
+        input.data = vec_input;
+
+        Mat current = input;
+        for (size_t i = 0; i < layers.size(); i++) {
+            current = layers[i].forward(current);
+            if (i < layers.size() - 1) {
+                current = Mat::apply_relu(current);
+            }
+        }
+        return current.data; // Return as vector
+    }
+
+    void backward(vector<double> vec_target, double lr) {
+        Mat target(1, vec_target.size());
+        target.data = vec_target;
+
+        Mat output = layers.back().lastOutput;
+        Mat error = Mat::subtract(output, target); 
+
+        for (int i = layers.size() - 1; i >= 0; i--) {
+            Layer& layer = layers[i];
+            if (i < layers.size() - 1) {
+                error = Mat::multiply_elements(error, Mat::relu_derivative(layer.lastOutput));
+            }
+
+            Mat inputT = Mat::transpose(layer.lastInput);
+            Mat weightGrad = Mat::multiply(inputT, error);
+            Mat weightsT = Mat::transpose(layer.weights);
+            Mat nextError = Mat::multiply(error, weightsT);
+
+            // Update weights/biases
+            for (int j = 0; j < layer.weights.data.size(); j++) 
+                layer.weights.data[j] -= weightGrad.data[j] * lr;
+            for (int j = 0; j < layer.bias.data.size(); j++) 
+                layer.bias.data[j] -= error.data[j] * lr;
+
+            error = nextError;
+        }
+    }
+};
+
+
 
 class Body
 {
@@ -77,60 +170,54 @@ void apply_physics(std::vector<Body> &bodies, double dt)
     }
 }
 
-void run_training(DenseLayer &nn, int epochs, double lr)
-{
-    // 1. Load the data into memory once
+
+
+void run_training(NeuralNetwork &nn, int epochs, double lr) {
     vector<string> allLines;
     ifstream file("trainingData.csv");
     string line;
-    while (getline(file, line))
-    {
-        if (!line.empty())
-            allLines.push_back(line);
+    while (getline(file, line)) {
+        if (!line.empty()) allLines.push_back(line);
     }
     file.close();
 
-    // Setup the random engine for shuffling
     std::default_random_engine rng(std::random_device{}());
 
-    for (int e = 0; e < epochs; e++)
-    {
-        // 2. Shuffle the lines at the start of every epoch
+    for (int e = 0; e < epochs; e++) {
         std::shuffle(allLines.begin(), allLines.end(), rng);
-
         double totalError = 0;
-        for (const string &rowLine : allLines)
-        {
+
+        for (const string &rowLine : allLines) {
             stringstream ss(rowLine);
             string val;
             vector<double> row;
+            while (getline(ss, val, ',')) row.push_back(stod(val));
 
-            while (getline(ss, val, ','))
-            {
-                row.push_back(stod(val));
-            }
-
-            if (row.size() == 8)
-            {
+            if (row.size() == 8) {
+                // row[0-3] = Input (t), row[4-7] = Result (t + dt)
                 vector<double> input = normalize_input(row[0], row[1], row[2], row[3]);
                 vector<double> target = normalize_target(row[4], row[5]);
 
                 vector<double> prediction = nn.forward(input);
-                train(nn, target, lr);
+                nn.backward(target, lr);
 
                 totalError += pow(prediction[0] - target[0], 2) + pow(prediction[1] - target[1], 2);
             }
         }
-
-        if (e % 10 == 0)
-            cout << "Epoch " << e << " | Average Loss: " << totalError / allLines.size() << endl;
+        if (e % 10 == 0) cout << "Epoch " << e << " | MSE Loss: " << totalError / allLines.size() << endl;
     }
 }
+
+
+
+
 
 int frameCount = 0;
 int FRAME = 4000;
 int main()
 {
+    bool trainAgain = false;
+
     const int screenwidth = 800;
     const int screenheight = 800;
     InitWindow(screenwidth, screenheight, "Simulation");
@@ -146,13 +233,30 @@ int main()
     // bodies.emplace_back(0.5e11, 1e11, -20000, 0, 10.972e25); //another planet
     // Body earth(1.5e11, 0, 0, 29780, 5.972e24);
 
-    DenseLayer brain(4, 2);
+    NeuralNetwork brain;
+    brain.add_layer(4, 128); // Hidden Layer 1: Learn patterns
+    brain.add_layer(128, 256); // Hidden Layer 2: Learn patterns
+    brain.add_layer(256, 64); // Hidden Layer 3: Learn patterns
+    brain.add_layer(64, 32); // Hidden Layer 4: Refine patterns
+    brain.add_layer(32, 2);
+
+
     Vector2 ghostPos = {1.5e11, 0};
     State currentState = COLLECTING;
     RenderTexture2D target = LoadRenderTexture(screenwidth, screenheight);
     BeginTextureMode(target);
     ClearBackground(BLANK);
     EndTextureMode();
+
+
+    ifstream check("brain.model");
+    if (check.good() && !trainAgain) {
+        check.close();
+        brain.load_model("brain.model");
+        currentState = PREDICTING; // Jump straight to AI simulation!
+    } else {
+        currentState = COLLECTING;
+    }
 
     while (!WindowShouldClose())
     {
@@ -193,6 +297,7 @@ int main()
         if (currentState == TRAINING)
         {
             run_training(brain, 300, 0.005);
+            brain.save_model("brain.model");
             currentState = PREDICTING;
         }
         else if (currentState == PREDICTING)

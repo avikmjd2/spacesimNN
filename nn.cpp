@@ -66,3 +66,4 @@ void train(DenseLayer &layer, vector<double> target, double learningRate)
         layer.biases[j]-= learningRate*error[j];
     }
 }
+
