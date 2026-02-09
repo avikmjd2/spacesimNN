@@ -137,11 +137,11 @@ public:
 
 void apply_gravity(Body &a, Body &b, double dt)
 {
-    double G = 6.674e-11;
+    double G = 6.67430e-11;
     double dx = b.pos.x - a.pos.x;
     double dy = b.pos.y - a.pos.y;
     double distance = sqrt(dx * dx + dy * dy);
-    double force = (G * a.mass * b.mass) / (distance * distance + 0.000000001);
+    double force = (G * a.mass * b.mass) / (distance * distance + 0.0000000001);
     double ax = force * (dx / distance) / a.mass;
     double ay = force * (dy / distance) / a.mass;
 

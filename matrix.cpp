@@ -1,6 +1,7 @@
 #include "matrix.h"
 #include <stdexcept>
 #include <fstream>
+#include <cmath>
 
 
 // Implementation of the constructor
@@ -11,6 +12,8 @@ Mat Mat::multiply(const Mat& a, const Mat& b) {
     // Basic validation could be added here: if (a.cols != b.rows) ...
     
     Mat result(a.rows, b.cols);
+
+    #pragma omp parallel for
     for (int i = 0; i < a.rows; i++) {
         for (int j = 0; j < b.cols; j++) {
             for (int k = 0; k < a.cols; k++) {
@@ -20,6 +23,28 @@ Mat Mat::multiply(const Mat& a, const Mat& b) {
     }
     return result;
 }
+
+
+// Mat Mat::multiply(const Mat& a, const Mat& b) {
+//     Mat result(a.rows, b.cols);
+
+//     #pragma omp parallel for
+//     for (int i = 0; i < a.rows; i++) {
+//         for (int k = 0; k < a.cols; k++) {
+//             // We pull this value out once so the inner loop is faster
+//             double scalar = a.data[i * a.cols + k];
+            
+//             for (int j = 0; j < b.cols; j++) {
+//                 // Now, 'j' is the inner-most index. 
+//                 // b.data and result.data are accessed in a perfect straight line!
+//                 result.data[i * b.cols + j] += scalar * b.data[k * b.cols + j];
+//             }
+//         }
+//     }
+//     return result;
+// }
+
+
 
 Mat Mat::add(const Mat& a, const Mat& b) {
     Mat result(a.rows, a.cols);
@@ -39,6 +64,41 @@ Mat Mat::apply_relu(const Mat& m) {
         val = (val > 0) ? val : 0;
     }
     return result;
+}
+
+
+inline double sigmoid(double x) 
+{
+    return 1.0 / (1.0 + exp(-x));
+}
+
+
+Mat Mat::apply_swish(const Mat& m) {
+    Mat result = m;
+    int size = (int)result.data.size();
+    for(double &val : result.data) {
+        val = val * sigmoid(val);
+    }
+    
+    // #pragma omp parallel for
+    // for(int i = 0; i < size; i++) 
+    // {
+    //     result.data[i] = result.data[i] * sigmoid(result.data[i]);
+    // }
+    return result;
+}
+
+Mat Mat::swish_derivative(const Mat& input_z) {
+    Mat grad(input_z.rows, input_z.cols);
+    for (int i = 0; i < input_z.data.size(); i++) {
+        double z = input_z.data[i];
+        double s = sigmoid(z);
+        double fz = z * s; // This is the swish(z) value
+        
+        // Swish derivative: f(z) + sigmoid(z) * (1 - f(z))
+        grad.data[i] = fz + s * (1.0 - fz);
+    }
+    return grad;
 }
 
 
